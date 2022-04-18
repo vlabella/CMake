@@ -65,6 +65,7 @@ For these components the following variables are set:
   ImageMagick_FOUND                    - TRUE if all components are found.
   ImageMagick_INCLUDE_DIRS             - Full paths to all include dirs.
   ImageMagick_LIBRARIES                - Full paths to all libraries.
+  ImageMagick_LIBRARY_DIR              - Full path to folder continaing libraries
   ImageMagick_<component>_FOUND        - TRUE if <component> is found.
   ImageMagick_<component>_INCLUDE_DIRS - Full path to <component> include dirs.
   ImageMagick_<component>_LIBRARIES    - Full path to <component> libraries.
@@ -104,7 +105,7 @@ function(FIND_IMAGEMAGICK_API component header)
       ${PC_${component}_INCLUDE_DIRS}
     PATHS
       ${ImageMagick_INCLUDE_DIRS}
-      "[HKEY_LOCAL_MACHINE\\SOFTWARE\\ImageMagick\\Current;BinPath]/include"
+      #"[HKEY_LOCAL_MACHINE\\SOFTWARE\\ImageMagick\\Current;BinPath]/include"
     PATH_SUFFIXES
       ImageMagick ImageMagick-6 ImageMagick-7
     DOC "Path to the ImageMagick arch-independent include dir."
@@ -117,7 +118,7 @@ function(FIND_IMAGEMAGICK_API component header)
       ${PC_${component}_INCLUDE_DIRS}
     PATHS
       ${ImageMagick_INCLUDE_DIRS}
-      "[HKEY_LOCAL_MACHINE\\SOFTWARE\\ImageMagick\\Current;BinPath]/include"
+      #"[HKEY_LOCAL_MACHINE\\SOFTWARE\\ImageMagick\\Current;BinPath]/include"
     PATH_SUFFIXES
       ImageMagick ImageMagick-6 ImageMagick-7
     DOC "Path to the ImageMagick arch-specific include dir."
@@ -129,15 +130,46 @@ function(FIND_IMAGEMAGICK_API component header)
       ${PC_${component}_LIBDIR}
       ${PC_${component}_LIB_DIRS}
     PATHS
-      "[HKEY_LOCAL_MACHINE\\SOFTWARE\\ImageMagick\\Current;BinPath]/lib"
+      ${ImageMagick_LIBRARY_DIR}
+      #"[HKEY_LOCAL_MACHINE\\SOFTWARE\\ImageMagick\\Current;BinPath]/lib"
     DOC "Path to the ImageMagick Magick++ library."
     NO_DEFAULT_PATH
     )
+  unset(FOUND_LIB)
+  string(COMPARE NOTEQUAL "ImageMagick_${component}_LIBRARY" "ImageMagick_${component}_LIBRARY-NOTFOUND" FOUND_LIB)
+  if(FOUND_LIB)
+    # search for debug library
+    get_property(_isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+    get_filename_component(LOCAL_LIB "${ImageMagick_${component}_LIBRARY}" NAME_WLE)
+    if(_isMultiConfig)
+      string(REPLACE "RL" "DB" LOCAL_LIB_D "${LOCAL_LIB}")
+      find_library(ImageMagick_${component}_LIBRARY_D
+      NAMES "${LOCAL_LIB_D}"
+      HINTS
+        ${PC_${component}_LIBDIR}
+        ${PC_${component}_LIB_DIRS}
+      PATHS
+        ${ImageMagick_LIBRARY_DIR}
+        #"[HKEY_LOCAL_MACHINE\\SOFTWARE\\ImageMagick\\Current;BinPath]/lib"
+      DOC "Path to the ImageMagick Magick++ library."
+      NO_DEFAULT_PATH
+      )
+      unset(FOUND_LIB)
+      string(COMPARE NOTEQUAL "${ImageMagick_${component}_LIBRARY_D}" "${ImageMagick_${component}_LIBRARY_D}-NOTFOUND" FOUND_LIB)
+      if(FOUND_LIB)
+        unset(LOCAL_LIB)
+        list(APPEND LOCAL_LIB "debug" )
+        list(APPEND LOCAL_LIB "${ImageMagick_${component}_LIBRARY_D}" )
+        list(APPEND LOCAL_LIB "optimized" )
+        list(APPEND LOCAL_LIB "${ImageMagick_${component}_LIBRARY}" )
+        set(ImageMagick_${component}_LIBRARY "${LOCAL_LIB}")
+      endif()
+    endif()
+  endif()
 
   # old version have only indep dir
   if(ImageMagick_${component}_INCLUDE_DIR AND ImageMagick_${component}_LIBRARY)
     set(ImageMagick_${component}_FOUND TRUE PARENT_SCOPE)
-
     # Construct per-component include directories.
     set(ImageMagick_${component}_INCLUDE_DIRS
       ${ImageMagick_${component}_INCLUDE_DIR}
@@ -180,6 +212,15 @@ endfunction()
 # Start Actual Work
 #---------------------------------------------------------------------
 # Try to find a ImageMagick installation binary path.
+
+# Search in default paths including ImageMagick_ROOT
+# allows user to overried installed version if desired
+# by setting ImageMagick_ROOT
+find_path(ImageMagick_EXECUTABLE_DIR
+  NAMES mogrify${CMAKE_EXECUTABLE_SUFFIX}
+  )
+# Search in registry if not found
+if("${ImageMagick_EXECUTABLE_DIR}" STREQUAL "ImageMagick_EXECUTABLE_DIR-NOTFOUND" )
 find_path(ImageMagick_EXECUTABLE_DIR
   NAMES mogrify${CMAKE_EXECUTABLE_SUFFIX}
   PATHS
@@ -187,9 +228,13 @@ find_path(ImageMagick_EXECUTABLE_DIR
   DOC "Path to the ImageMagick binary directory."
   NO_DEFAULT_PATH
   )
-find_path(ImageMagick_EXECUTABLE_DIR
-  NAMES mogrify${CMAKE_EXECUTABLE_SUFFIX}
-  )
+endif()
+#
+# assume standard layout for lib and include below executables
+# set these here and not in macro above
+# might be better to use find_path
+set(ImageMagick_LIBRARY_DIR "${ImageMagick_EXECUTABLE_DIR}/lib")
+list(APPEND ImageMagick_INCLUDE_DIRS "${ImageMagick_EXECUTABLE_DIR}/include")
 
 # Find each component. Search for all tools in same dir
 # <ImageMagick_EXECUTABLE_DIR>; otherwise they should be found
